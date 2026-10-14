@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Incidencia de Cristalazos - Monterrey</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        #map { height: calc(100vh - 5rem); width: 100%; }
+        .custom-popup .leaflet-popup-content-wrapper { background: #1f2937; color: #f3f4f6; border-radius: 0.5rem; }
+        .custom-popup .leaflet-popup-tip { background: #1f2937; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans antialiased overflow-hidden">
+
+    <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex flex-col md:flex-row justify-between items-center shadow-md z-10 relative gap-2">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl">🚨</span>
+            <div>
+                <h1 class="text-base sm:text-lg font-bold tracking-wide text-red-400">Mapa de Focos Rojos: Cristalazos</h1>
+                <p class="text-xs text-gray-400">Chapultepec, Revolución, Garza Sada, Bahía Coronado y Estacionamientos</p>
+            </div>
+        </div>
+        
+        <!-- Controls & Filters -->
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="flex gap-1 bg-gray-900/80 p-1 rounded-lg border border-gray-700">
+                <button onclick="filterMarkers('all')" class="px-2.5 py-1 text-xs font-semibold bg-gray-700 hover:bg-gray-600 rounded transition">Todos</button>
+                <button onclick="filterMarkers('Garza Sada')" class="px-2.5 py-1 text-xs font-semibold bg-red-900/60 text-red-300 hover:bg-red-800 rounded transition">Garza Sada</button>
+                <button onclick="filterMarkers('Revolución')" class="px-2.5 py-1 text-xs font-semibold bg-amber-900/60 text-amber-300 hover:bg-amber-800 rounded transition">Revolución</button>
+                <button onclick="filterMarkers('Chapultepec')" class="px-2.5 py-1 text-xs font-semibold bg-blue-900/60 text-blue-300 hover:bg-blue-800 rounded transition">Chapultepec</button>
+                <button onclick="filterMarkers('Estacionamientos')" class="px-2.5 py-1 text-xs font-semibold bg-purple-900/60 text-purple-300 hover:bg-purple-800 rounded transition">Estacionamientos</button>
+            </div>
+
+            <button onclick="toggleApiKeyModal()" class="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition flex items-center gap-1 shadow">
+                ⚙️ <span>Cambiar Estilo / Proveedor</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="relative">
+        <div id="map"></div>
+        
+        <!-- Legend Overlay -->
+        <div class="absolute bottom-6 right-6 bg-gray-800/90 backdrop-blur border border-gray-700 p-4 rounded-xl shadow-2xl z-[999] max-w-xs hidden sm:block">
+            <h3 class="text-sm font-semibold mb-2 text-red-400 border-b border-gray-700 pb-1">Nivel de Incidencia</h3>
+            <ul class="space-y-2 text-xs">
+                <li class="flex items-center space-x-2">
+                    <span class="w-4 h-4 rounded-full bg-red-600 inline-block shadow-sm shadow-red-500/50"></span>
+                    <span><strong>Zona Crítica:</strong> Estacionamientos y Plazas de alto flujo.</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <span class="w-4 h-4 rounded-full bg-amber-500 inline-block"></span>
+                    <span><strong>Zona de Atención:</strong> Corredores comerciales y avenidas principales.</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <span class="w-4 h-4 rounded-full bg-blue-500 inline-block"></span>
+                    <span><strong>Zona Residencial / Periférica:</strong> Reportes nocturnos en calles secundarias.</span>
+                </li>
+            </ul>
+        </div>
+    </main>
+
+    <div id="apiModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-gray-700 pb-2">
+                <h3 class="text-lg font-bold text-gray-100 flex items-center gap-2">🗺️ Selección de Mapa Base</h3>
+                <button onclick="toggleApiKeyModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+            </div>
+            <p class="text-xs text-gray-300 leading-relaxed">
+                El mapa se inicializa automáticamente con <strong>OpenStreetMap / Esri</strong> para garantizar visibilidad inmediata sin bloqueos.
+            </p>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1">Proveedor de Mapa:</label>
+                <select id="tileProviderSelect" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+                    <option value="osm-standard">OpenStreetMap Estándar (100% Gratuito y Visible)</option>
+                    <option value="esri-sat">Esri Satelital (Vista Aérea Alta Definición)</option>
+                    <option value="carto-dark">CartoDB Dark Matter (Modo Oscuro)</option>
+                    <option value="stadia-alidade">Stadia Maps Dark (Requiere clave válida)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1">Clave de API / Token (Si aplica):</label>
+                <input type="text" id="apiKeyInput" placeholder="Ej: cb1_3yax_1_62a7917a038a98cc4759f31f" class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="toggleApiKeyModal()" class="px-4 py-2 text-xs font-semibold bg-gray-700 hover:bg-gray-600 rounded-lg transition">Cancelar</button>
+                <button onclick="applyApiKey()" class="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition">Aplicar Mapa</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inicializar mapa centrado en Monterrey (Garza Sada, Revolución, Chapultepec, Bahía Coronado)
+        const map = L.map('map').setView([25.6480, -100.2820], 14);
+
+        let currentTileLayer;
+
+        // Función para cambiar o aplicar la capa base del mapa
+        function setTileLayer(provider = 'osm-standard', apiKey = '') {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+
+            let tileUrl = '';
+            let attribution = '';
+
+            if (provider === 'stadia-alidade' && apiKey) {
+                tileUrl = `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=${apiKey}`;
+                attribution = '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>';
+            } else if (provider === 'esri-sat') {
+                tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+                attribution = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
+            } else if (provider === 'carto-dark') {
+                tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+                attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+            } else {
+                // OpenStreetMap Estándar por defecto
+                tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+                attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+            }
+
+            currentTileLayer = L.tileLayer(tileUrl, {
+                attribution: attribution,
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Clave recibida del usuario prellenada en el modal
+        const userApiKey = "cb1_3yax_1_62a7917a038a98cc4759f31f";
+        document.getElementById('apiKeyInput').value = userApiKey;
+        
+        // Inicializamos con OpenStreetMap Estándar para asegurar visualización 100% garantizada en todo entorno
+        setTileLayer('osm-standard', userApiKey);
+
+        // Datos de incidentes con foco en Bahía Coronado, Chapultepec, Garza Sada y Revolución
+        const incidentData = [
+            {
+                id: 1,
+                category: 'Garza Sada',
+                name: 'Garza Sada & San Luis Potosí (Frente a Zona Tec)',
+                coords: [25.6512, -100.2895],
+                level: 'Crítica',
+                desc: 'Alta incidencia en estacionamientos de tiendas de conveniencia y plazas comerciales pequeñas frente al Tec. Los delincuentes operan en motocicleta aprovechando descuidos breves.'
+            },
+            {
+                id: 2,
+                category: 'Garza Sada',
+                name: 'Plazas Comerciales en Eugenio Garza Sada (Zona Sur)',
+                coords: [25.6321, -100.2740],
+                level: 'Crítica',
+                desc: 'Estacionamientos de centros comerciales y restaurantes sobre Garza Sada. Frecuente robo de mochilas, laptops y maletas dejadas a la vista.'
+            },
+            {
+                id: 3,
+                category: 'Revolución',
+                name: 'Av. Revolución & Av. Chapultepec (Cruce Comercial)',
+                coords: [25.6534, -100.2845],
+                level: 'Alta',
+                desc: 'Zona de alto flujo vehicular y comercial. Se han registrado cristalazos en vehículos estacionados sobre los laterales y negocios cercanos.'
+            },
+            {
+                id: 4,
+                category: 'Revolución',
+                name: 'Av. Revolución (Colonia Estadio / Jardín Español)',
+                coords: [25.6601, -100.2832],
+                level: 'Alta',
+                desc: 'Vehículos estacionados en avenidas secundarias colindantes a Revolución durante horarios nocturnos o visitas a establecimientos.'
+            },
+            {
+                id: 5,
+                category: 'Chapultepec',
+                name: 'Bahía Coronado & Av. Chapultepec (Zona Crítica)',
+                coords: [25.6565, -100.2780],
+                level: 'Crítica',
+                desc: 'Foco rojo reportado sobre Bahía Coronado y alrededores. Cristalazos frecuentes a autos estacionados en la calle o cajones exteriores de negocios.'
+            },
+            {
+                id: 6,
+                category: 'Chapultepec',
+                name: 'Av. Chapultepec & Col. Valle de Chapultepec',
+                coords: [25.6558, -100.2721],
+                level: 'Media-Alta',
+                desc: 'Reportes de cristalazos en calles residenciales y comerciales cercanas a Chapultepec y avenidas secundarias como Florida.'
+            },
+            {
+                id: 7,
+                category: 'Estacionamientos',
+                name: 'Estacionamientos Abiertos sobre Garza Sada y Revolución',
+                coords: [25.6410, -100.2810],
+                level: 'Crítica',
+                desc: 'Patrón recurrente en cajeros automáticos y estacionamientos abiertos donde se vigila a clientes que dejan mochilas, computadoras u objetos de valor.'
+            }
+        ];
+
+        let markersLayer = L.layerGroup().addTo(map);
+
+        function renderMarkers(filter = 'all') {
+            markersLayer.clearLayers();
+
+            incidentData.forEach(item => {
+                if (filter === 'all' || item.category === filter) {
+                    let color = '#ef4444'; // Red default
+                    if (item.level === 'Alta') color = '#f59e0b';
+                    if (item.level === 'Media' || item.level === 'Media-Alta') color = '#3b82f6';
+
+                    const customIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style="background-color: ${color}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-size: 14px;">🚨</div>`,
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14]
+                    });
+
+                    const marker = L.marker(item.coords, { icon: customIcon });
+
+                    const popupContent = `
+                        <div class="p-2">
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-gray-700 text-gray-300">${item.category}</span>
+                            <h4 class="font-bold text-sm mt-1 text-red-400">${item.name}</h4>
+                            <p class="text-xs mt-1 text-gray-300">${item.desc}</p>
+                            <p class="text-[10px] mt-2 text-gray-400">Nivel de incidencia: <strong class="text-white">${item.level}</strong></p>
+                        </div>
+                    `;
+
+                    marker.bindPopup(popupContent, { className: 'custom-popup' });
+                    markersLayer.addLayer(marker);
+                }
+            });
+        }
+
+        function filterMarkers(category) {
+            renderMarkers(category);
+        }
+
+        // Modal Controls & API key Handlers
+        function toggleApiKeyModal() {
+            const modal = document.getElementById('apiModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function applyApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            const provider = document.getElementById('tileProviderSelect').value;
+            setTileLayer(provider, key);
+            toggleApiKeyModal();
+        }
+
+        // Carga inicial de marcas
+        renderMarkers('all');
+    </script>
+</body>
+</html>
